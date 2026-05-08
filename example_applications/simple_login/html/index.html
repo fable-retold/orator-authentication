@@ -11,8 +11,8 @@
 
 			/* --- Header Bar --- */
 			.pict-example-header { display: flex; align-items: stretch; background: #264653; border-bottom: 3px solid #E76F51; }
-			.pict-example-badge { background: #E76F51; color: #fff; padding: 0.6rem 1rem; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; display: flex; align-items: center; gap: 0.5rem; }
-			.pict-example-badge svg { width: 14px; height: 14px; fill: #fff; flex-shrink: 0; }
+			.pict-example-badge { background: #E76F51; color: var(--theme-color-background-panel, #fff); padding: 0.6rem 1rem; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; display: flex; align-items: center; gap: 0.5rem; }
+			.pict-example-badge svg { width: 14px; height: 14px; fill: var(--theme-color-background-panel, #fff); flex-shrink: 0; }
 			.pict-example-app-name { padding: 0.6rem 1rem; color: #FAEDCD; font-size: 1.1rem; font-weight: 600; display: flex; align-items: center; }
 			.pict-example-module { margin-left: auto; padding: 0.6rem 1rem; color: #D4A373; font-size: 0.75rem; display: flex; align-items: center; letter-spacing: 0.03em; }
 
@@ -20,7 +20,7 @@
 			.pict-example-content { padding: 1.5rem; max-width: 640px; margin: 0 auto; }
 
 			/* --- Card Panel --- */
-			.login-panel { background: #fff; border: 1px solid #D4A373; border-top: 4px solid #E76F51; border-radius: 6px; padding: 1.25rem; box-shadow: 0 2px 8px rgba(38,70,83,0.08); margin-bottom: 1rem; }
+			.login-panel { background: var(--theme-color-background-panel, #fff); border: 1px solid #D4A373; border-top: 4px solid #E76F51; border-radius: 6px; padding: 1.25rem; box-shadow: 0 2px 8px rgba(38,70,83,0.08); margin-bottom: 1rem; }
 			.login-panel h2 { margin: 0 0 1rem 0; color: #264653; font-size: 1.1rem; }
 			.login-panel h3 { margin: 1rem 0 0.5rem 0; color: #264653; font-size: 0.95rem; }
 
@@ -33,11 +33,11 @@
 
 			/* --- Buttons --- */
 			.btn { border: none; padding: 0.5rem 1.25rem; border-radius: 4px; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
-			.btn-primary { background: #E76F51; color: #fff; }
+			.btn-primary { background: #E76F51; color: var(--theme-color-background-panel, #fff); }
 			.btn-primary:hover { background: #C45A3E; }
 			.btn-secondary { background: #264653; color: #FAEDCD; }
 			.btn-secondary:hover { background: #1a3340; }
-			.btn-danger { background: #9B2226; color: #fff; }
+			.btn-danger { background: #9B2226; color: var(--theme-color-background-panel, #fff); }
 			.btn-danger:hover { background: #7d1b1e; }
 			.btn + .btn { margin-left: 0.5rem; }
 
