@@ -4,19 +4,8 @@
 
 Orator Authentication follows the Fable service provider pattern. It registers as a service type with Fable's service manager and orchestrates session management, route registration, and optional OAuth flows through the Orator API server.
 
-```
-Fable (Core)
-  ├── Orator (API Server Orchestration)
-  │     └── Service Server (Restify or IPC)
-  │           ├── Authentication Routes (Authenticate, CheckSession, Deauthenticate)
-  │           └── OAuth Routes (Providers, Begin, Callback) [optional]
-  └── OratorAuthentication (This Module)
-        ├── Session Store (in-memory Map)
-        ├── Pluggable Authenticator (username/password)
-        ├── OAuth Provider Registry (OIDC / MSAL)
-        ├── OAuth State Store (CSRF protection)
-        └── OAuth User Mapper (claims -> user record)
-```
+<!-- bespoke diagram: edit diagrams/system-design.mmd or .hints.json, then: npx pict-renderer-graph build modules/orator/orator-authentication/docs -->
+![System Design](diagrams/system-design.svg)
 
 ## Session Lifecycle
 

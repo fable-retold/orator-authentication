@@ -1,0 +1,11 @@
+Fable (Core)
+  ├── Orator (API Server Orchestration)
+  │     └── Service Server (Restify or IPC)
+  │           ├── Authentication Routes (Authenticate, CheckSession, Deauthenticate)
+  │           └── OAuth Routes (Providers, Begin, Callback) [optional]
+  └── OratorAuthentication (This Module)
+        ├── Session Store (in-memory Map)
+        ├── Pluggable Authenticator (username/password)
+        ├── OAuth Provider Registry (OIDC / MSAL)
+        ├── OAuth State Store (CSRF protection)
+        └── OAuth User Mapper (claims -> user record)
