@@ -55,6 +55,15 @@ class OratorAuthentication extends libFableServiceProviderBase
 			: `OratorAuthenticationDeniedPasswords` in this.fable.settings ? this.fable.settings.OratorAuthenticationDeniedPasswords
 			: [];
 
+		// --- Bearer-token auth (opt-in; the consumer supplies the token lookup) ---
+		this.enableBearerTokens = (`EnableBearerTokens` in this.options) ? this.options.EnableBearerTokens
+			: `OratorAuthenticationEnableBearerTokens` in this.fable.settings ? this.fable.settings.OratorAuthenticationEnableBearerTokens
+			: false;
+		this.bearerTokenHeaderName = (`BearerTokenHeaderName` in this.options) ? String(this.options.BearerTokenHeaderName).toLowerCase()
+			: 'authorization';
+		// Consumer-supplied: (pToken, fCallback) => fCallback(pError, pUserRecord|null).
+		this._tokenAuthenticator = null;
+
 		// --- In-memory session store ---
 		this.sessionStore = new Map();
 
@@ -148,6 +157,46 @@ class OratorAuthentication extends libFableServiceProviderBase
 		}
 		this._authenticator = fAuthenticatorFunction;
 		return true;
+	}
+
+	/**
+	 * Replace the bearer-token authenticator. The consumer supplies the token
+	 * lookup (typically a hashed-token DB read returning the user record).
+	 *
+	 * @param {Function} fTokenAuthenticatorFunction - (pToken, fCallback)
+	 *        fCallback signature: (pError, pUserRecord|null)
+	 *        Return null pUserRecord to indicate the token is invalid.
+	 */
+	setTokenAuthenticator(fTokenAuthenticatorFunction)
+	{
+		if (typeof fTokenAuthenticatorFunction !== 'function')
+		{
+			this.log.error('OratorAuthentication.setTokenAuthenticator(): argument must be a function.');
+			return false;
+		}
+		this._tokenAuthenticator = fTokenAuthenticatorFunction;
+		return true;
+	}
+
+	/**
+	 * Parse an `Authorization: Bearer <token>` header. Returns the token or null.
+	 *
+	 * @param {object} pRequest - The HTTP request object
+	 * @returns {string|null}
+	 */
+	_parseBearerToken(pRequest)
+	{
+		if (!pRequest || !pRequest.headers)
+		{
+			return null;
+		}
+		let tmpHeader = pRequest.headers[this.bearerTokenHeaderName] || pRequest.headers.authorization || pRequest.headers.Authorization;
+		if (!tmpHeader || typeof tmpHeader !== 'string')
+		{
+			return null;
+		}
+		let tmpMatch = tmpHeader.match(/^Bearer\s+(\S+)$/i);
+		return tmpMatch ? tmpMatch[1] : null;
 	}
 
 	/**
@@ -275,13 +324,13 @@ class OratorAuthentication extends libFableServiceProviderBase
 	}
 
 	/**
-	 * Look up the authenticated session for a request by parsing its Cookie header.
-	 * Returns the session object or null if no valid session exists.
+	 * The synchronous cookie-session lookup: parse the Cookie header, find the
+	 * session in the in-memory store, and enforce the TTL.
 	 *
 	 * @param {object} pRequest - The HTTP request object
 	 * @returns {object|null} The session object or null
 	 */
-	getSessionForRequest(pRequest)
+	_cookieSession(pRequest)
 	{
 		if (!pRequest || !pRequest.headers)
 		{
@@ -315,6 +364,70 @@ class OratorAuthentication extends libFableServiceProviderBase
 		tmpSession.LastAccess = tmpNow;
 
 		return tmpSession;
+	}
+
+	/**
+	 * Synchronous session lookup for a request. If a middleware already resolved
+	 * the session onto pRequest.UserSession (e.g. via resolveSessionForRequest,
+	 * which also handles bearer tokens), that result is returned; otherwise the
+	 * cookie session is used. Backward compatible with cookie-only consumers.
+	 *
+	 * @param {object} pRequest - The HTTP request object
+	 * @returns {object|null} The session object or null
+	 */
+	getSessionForRequest(pRequest)
+	{
+		if (pRequest && (`UserSession` in pRequest))
+		{
+			return pRequest.UserSession;
+		}
+		return this._cookieSession(pRequest);
+	}
+
+	/**
+	 * Resolve the session for a request, supporting both the cookie session and
+	 * (when EnableBearerTokens is set and a token authenticator is configured) an
+	 * `Authorization: Bearer <token>` header. Async because the token lookup is a
+	 * consumer-supplied DB hit. A bearer session is ephemeral - it is NOT written
+	 * to the in-memory session store, so token requests do not accumulate sessions.
+	 * Install this in a per-request middleware that sets pRequest.UserSession.
+	 *
+	 * @param {object} pRequest - The HTTP request object
+	 * @param {Function} fCallback - (pError, pSession|null)
+	 */
+	resolveSessionForRequest(pRequest, fCallback)
+	{
+		let tmpCookieSession = this._cookieSession(pRequest);
+		if (tmpCookieSession)
+		{
+			return fCallback(null, tmpCookieSession);
+		}
+
+		if (this.enableBearerTokens && (typeof this._tokenAuthenticator === 'function'))
+		{
+			let tmpToken = this._parseBearerToken(pRequest);
+			if (tmpToken)
+			{
+				return this._tokenAuthenticator(tmpToken, (pError, pUserRecord) =>
+				{
+					if (pError || !pUserRecord)
+					{
+						return fCallback(null, null);
+					}
+					let tmpNow = Date.now();
+					return fCallback(null,
+						{
+							SessionID: 'token',
+							UserRecord: pUserRecord,
+							ViaToken: true,
+							CreatedAt: tmpNow,
+							LastAccess: tmpNow
+						});
+				});
+			}
+		}
+
+		return fCallback(null, null);
 	}
 
 	/**
