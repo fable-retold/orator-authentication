@@ -379,7 +379,13 @@ class OratorAuthentication extends libFableServiceProviderBase
 	{
 		if (pRequest && (`UserSession` in pRequest))
 		{
-			return pRequest.UserSession;
+			// A middleware may set an empty anonymous session object ({}) rather
+			// than null, so downstream session marshalers that call Object.keys()
+			// on it do not choke. A real session always carries a UserRecord, so
+			// treat one without it as "not authenticated" and hand callers a clean
+			// null instead of a half-populated object they would dereference.
+			let tmpSession = pRequest.UserSession;
+			return (tmpSession && tmpSession.UserRecord) ? tmpSession : null;
 		}
 		return this._cookieSession(pRequest);
 	}
@@ -574,7 +580,7 @@ class OratorAuthentication extends libFableServiceProviderBase
 			{
 				let tmpSession = this.getSessionForRequest(pRequest);
 
-				if (!tmpSession)
+				if (!tmpSession || !tmpSession.UserRecord)
 				{
 					pResponse.send({ LoggedIn: false });
 					return fNext();

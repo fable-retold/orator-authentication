@@ -96,4 +96,19 @@ suite('Orator Authentication - Bearer Tokens', () =>
 			return fDone();
 		});
 	});
+
+	// Regression: a middleware may set an empty {} anonymous session (so a
+	// downstream Object.keys() session marshaler does not choke on null).
+	// getSessionForRequest must report that as null - a session with no
+	// UserRecord is not authenticated - so callers like CheckSession do not
+	// dereference UserRecord on it and crash.
+	test('getSessionForRequest treats an empty {} session (no UserRecord) as null', (fDone) =>
+	{
+		makeAuth({}, (pAuth) =>
+		{
+			Expect(pAuth.getSessionForRequest({ headers: {}, UserSession: {} })).to.equal(null);
+			Expect(pAuth.getSessionForRequest({ headers: {}, UserSession: { SessionID: 'x' } })).to.equal(null);
+			return fDone();
+		});
+	});
 });
