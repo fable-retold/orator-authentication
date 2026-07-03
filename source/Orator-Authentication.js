@@ -909,6 +909,22 @@ class OratorAuthentication extends libFableServiceProviderBase
 	}
 
 	/**
+	 * Validate an optional post-login returnTo. Only a SAME-ORIGIN relative path is honored (starts with a
+	 * single '/', not '//' or '/\' which are protocol-relative). Anything with a scheme or host is rejected,
+	 * so returnTo can never become an open redirect to another site. Returns '' when not acceptable.
+	 *
+	 * @param {string} pValue - The candidate returnTo
+	 * @returns {string} the safe relative path, or ''
+	 */
+	_safeReturnTo(pValue)
+	{
+		let tmpStr = String(pValue == null ? '' : pValue);
+		if (!tmpStr || tmpStr.charAt(0) !== '/') { return ''; }
+		if (tmpStr.charAt(1) === '/' || tmpStr.charAt(1) === '\\') { return ''; }
+		return tmpStr;
+	}
+
+	/**
 	 * Perform a redirect response, with fallback for IPC testing.
 	 *
 	 * @param {object} pResponse - The HTTP response object
@@ -1044,12 +1060,17 @@ class OratorAuthentication extends libFableServiceProviderBase
 			tmpCodeVerifier = this.fable.getUUID() + this.fable.getUUID();
 		}
 
+		// Optional post-login returnTo (a same-origin relative path), carried through the state so the
+		// callback can send the user back where they started (e.g. an in-progress OAuth authorize page).
+		let tmpReturnTo = this._safeReturnTo((pRequest.query && pRequest.query.returnTo) || (pRequest.searchParams && pRequest.searchParams.returnTo));
+
 		// Store state for callback validation
 		this._storeOAuthState(tmpState,
 		{
 			CodeVerifier: tmpCodeVerifier,
 			Nonce: tmpNonce,
-			Provider: pProviderName
+			Provider: pProviderName,
+			ReturnTo: tmpReturnTo
 		});
 
 		// Get or initialize the provider, then build the authorization URL
@@ -1204,8 +1225,9 @@ class OratorAuthentication extends libFableServiceProviderBase
 
 							this.log.info(`OratorAuthentication: OAuth user [${pUserRecord.LoginID}] authenticated via [${pProviderName}], session [${tmpSession.SessionID}].`);
 
-							// Redirect to post-login URL
-							return this._doRedirect(pResponse, this.oauthPostLoginRedirectURL, fNext);
+							// Redirect to the stored returnTo (re-validated) if present, else the default post-login URL.
+							let tmpRedirectTo = this._safeReturnTo(tmpStoredState.ReturnTo) || this.oauthPostLoginRedirectURL;
+							return this._doRedirect(pResponse, tmpRedirectTo, fNext);
 						});
 				})
 			.catch(
