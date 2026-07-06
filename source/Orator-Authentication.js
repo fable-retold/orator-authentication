@@ -42,6 +42,16 @@ class OratorAuthentication extends libFableServiceProviderBase
 			: `OratorAuthenticationSessionTTL` in this.fable.settings ? this.fable.settings.OratorAuthenticationSessionTTL
 			: 86400000; // 24 hours
 
+		// Sliding session (opt-in, default false). When off, the TTL window is
+		// fixed from CreatedAt with no renewal (the historical behavior). When on,
+		// the window is measured from the last authenticated access, so ongoing
+		// activity keeps the session alive and only genuine inactivity longer than
+		// sessionTTL expires it. Kept default-false so every existing consumer is
+		// unaffected.
+		this.slidingSession = (`SlidingSession` in this.options) ? !!this.options.SlidingSession
+			: `OratorAuthenticationSlidingSession` in this.fable.settings ? !!this.fable.settings.OratorAuthenticationSlidingSession
+			: false;
+
 		this.cookiePath = (`CookiePath` in this.options) ? this.options.CookiePath
 			: '/';
 
@@ -382,15 +392,18 @@ class OratorAuthentication extends libFableServiceProviderBase
 			return null;
 		}
 
-		// Check TTL
+		// Check TTL. Fixed (default): measured from CreatedAt, no renewal.
+		// Sliding (opt-in): measured from the last access, so activity within the
+		// window pushes expiry forward and only real inactivity lapses it.
 		let tmpNow = Date.now();
-		if ((tmpNow - tmpSession.CreatedAt) > this.sessionTTL)
+		let tmpExpiryReference = this.slidingSession ? tmpSession.LastAccess : tmpSession.CreatedAt;
+		if ((tmpNow - tmpExpiryReference) > this.sessionTTL)
 		{
 			this._destroySession(tmpSessionID);
 			return null;
 		}
 
-		// Update last access time
+		// Update last access time (also the point the sliding window advances from).
 		tmpSession.LastAccess = tmpNow;
 
 		return tmpSession;
