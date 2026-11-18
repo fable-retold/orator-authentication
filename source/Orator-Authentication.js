@@ -61,6 +61,38 @@ class OratorAuthentication extends libFableServiceProviderBase
 		this.cookieSecure = (`CookieSecure` in this.options) ? this.options.CookieSecure
 			: false;
 
+		// SameSite attribute on the session cookie (default 'Lax'). Lax keeps a
+		// cross-site form POST from carrying the session in every browser. Accepts
+		// 'Strict' | 'Lax' | 'None' (any case), or false to omit the attribute
+		// (the legacy header). Normalized once here; must come after cookieSecure
+		// because 'None' is only valid on a Secure cookie.
+		let tmpCookieSameSite = (`CookieSameSite` in this.options) ? this.options.CookieSameSite
+			: `OratorAuthenticationCookieSameSite` in this.fable.settings ? this.fable.settings.OratorAuthenticationCookieSameSite
+			: 'Lax';
+		let tmpCookieSameSiteResult = this._normalizeCookieSameSite(tmpCookieSameSite, this.cookieSecure);
+		if (tmpCookieSameSiteResult.Warning)
+		{
+			this.log.warn(`OratorAuthentication: ${tmpCookieSameSiteResult.Warning}`);
+		}
+		this.cookieSameSite = tmpCookieSameSiteResult.Value;
+
+		// Cross-site sign-out (default false = refused). Deauthenticate answers 403
+		// and leaves the session and cookie alone when the browser marks the
+		// request as cross-site (see _isCrossSiteRequest). Set true only when a
+		// page on another site has to be able to sign users out. Not normalized
+		// with !! (as SlidingSession is): fable's ${ENV|default} templating hands
+		// over strings, and !!'false' is true, which would silently turn this
+		// security check off. Only true, 'true' or '1' turn it off.
+		let tmpAllowCrossSiteDeauthenticate = (`AllowCrossSiteDeauthenticate` in this.options) ? this.options.AllowCrossSiteDeauthenticate
+			: `OratorAuthenticationAllowCrossSiteDeauthenticate` in this.fable.settings ? this.fable.settings.OratorAuthenticationAllowCrossSiteDeauthenticate
+			: false;
+		let tmpAllowCrossSiteDeauthenticateResult = this._normalizeAllowCrossSiteDeauthenticate(tmpAllowCrossSiteDeauthenticate);
+		if (tmpAllowCrossSiteDeauthenticateResult.Warning)
+		{
+			this.log.warn(`OratorAuthentication: ${tmpAllowCrossSiteDeauthenticateResult.Warning}`);
+		}
+		this.allowCrossSiteDeauthenticate = tmpAllowCrossSiteDeauthenticateResult.Value;
+
 		this.deniedPasswords = (`DeniedPasswords` in this.options) ? this.options.DeniedPasswords
 			: `OratorAuthenticationDeniedPasswords` in this.fable.settings ? this.fable.settings.OratorAuthenticationDeniedPasswords
 			: [];
@@ -307,6 +339,168 @@ class OratorAuthentication extends libFableServiceProviderBase
 	}
 
 	/**
+	 * Normalize a CookieSameSite setting into the attribute value to emit.
+	 * Pure (no logging, no instance state) so it can be unit tested; the
+	 * constructor logs any Warning it returns.
+	 *
+	 *   'strict' | 'lax' | 'none' (any case, trimmed) -> 'Strict' | 'Lax' | 'None'
+	 *   false                                         -> false (omit the attribute; legacy)
+	 *   undefined | null                              -> 'Lax' (an unset pass-through keeps the default)
+	 *   anything else                                 -> 'Lax' plus a Warning
+	 *   'None' without pSecure                        -> 'Lax' plus a Warning (browsers reject
+	 *                                                    SameSite=None without Secure)
+	 *
+	 * @param {any} pValue - The configured CookieSameSite value
+	 * @param {boolean} pSecure - Whether the cookie is issued with the Secure attribute
+	 * @returns {{ Value: (string|false), Warning: (string|null) }}
+	 */
+	_normalizeCookieSameSite(pValue, pSecure)
+	{
+		if (pValue === false)
+		{
+			return { Value: false, Warning: null };
+		}
+		if ((pValue === undefined) || (pValue === null))
+		{
+			return { Value: 'Lax', Warning: null };
+		}
+
+		let tmpCanonical = null;
+		if (typeof pValue === 'string')
+		{
+			let tmpLower = pValue.trim().toLowerCase();
+			if (tmpLower === 'strict')
+			{
+				tmpCanonical = 'Strict';
+			}
+			else if (tmpLower === 'lax')
+			{
+				tmpCanonical = 'Lax';
+			}
+			else if (tmpLower === 'none')
+			{
+				tmpCanonical = 'None';
+			}
+		}
+
+		if (!tmpCanonical)
+		{
+			let tmpShownValue;
+			try
+			{
+				tmpShownValue = (typeof pValue === 'string') ? `"${pValue}"` : String(pValue);
+			}
+			catch (pError)
+			{
+				tmpShownValue = `[${typeof pValue}]`;
+			}
+			return (
+				{
+					Value: 'Lax',
+					Warning: `CookieSameSite value ${tmpShownValue} is not one of Strict, Lax, None or false; using Lax.`
+				});
+		}
+
+		if ((tmpCanonical === 'None') && !pSecure)
+		{
+			return (
+				{
+					Value: 'Lax',
+					Warning: 'CookieSameSite None requires CookieSecure: true (browsers reject SameSite=None without Secure, which would drop the session cookie); using Lax.'
+				});
+		}
+
+		return { Value: tmpCanonical, Warning: null };
+	}
+
+	/**
+	 * Normalize an AllowCrossSiteDeauthenticate setting. It fails closed: only
+	 * an unmistakable "on" turns the cross-site sign-out check off, because the
+	 * value often arrives as text (fable's ${ENV|default} settings templating
+	 * always produces a string, and !!'false' is true). Pure (no logging, no
+	 * instance state) so it can be unit tested; the constructor logs any
+	 * Warning it returns.
+	 *
+	 *   true | 1 | 'true' | '1' (any case, trimmed)        -> true
+	 *   false | 0 | undefined | null | 'false' | '0' | ''  -> false
+	 *   anything else                                     -> false plus a Warning
+	 *
+	 * @param {any} pValue - The configured AllowCrossSiteDeauthenticate value
+	 * @returns {{ Value: boolean, Warning: (string|null) }}
+	 */
+	_normalizeAllowCrossSiteDeauthenticate(pValue)
+	{
+		if ((pValue === true) || (pValue === 1))
+		{
+			return { Value: true, Warning: null };
+		}
+		if ((pValue === false) || (pValue === 0) || (pValue === undefined) || (pValue === null))
+		{
+			return { Value: false, Warning: null };
+		}
+
+		if (typeof pValue === 'string')
+		{
+			let tmpLower = pValue.trim().toLowerCase();
+			if ((tmpLower === 'true') || (tmpLower === '1'))
+			{
+				return { Value: true, Warning: null };
+			}
+			if ((tmpLower === 'false') || (tmpLower === '0') || (tmpLower === ''))
+			{
+				return { Value: false, Warning: null };
+			}
+		}
+
+		let tmpShownValue;
+		try
+		{
+			tmpShownValue = (typeof pValue === 'string') ? `"${pValue}"` : String(pValue);
+		}
+		catch (pError)
+		{
+			tmpShownValue = `[${typeof pValue}]`;
+		}
+		return (
+			{
+				Value: false,
+				Warning: `AllowCrossSiteDeauthenticate value ${tmpShownValue} is not true or false; cross-site sign-out stays refused.`
+			});
+	}
+
+	/**
+	 * Build the attribute tail shared by the session cookie and its clearing
+	 * cookie, so the two can never drift apart. Order: Path, Expires (clear
+	 * only), HttpOnly, Secure, SameSite.
+	 *
+	 * @param {boolean} pExpire - True to add the epoch Expires (clears the cookie)
+	 * @returns {string} e.g. '; Path=/; HttpOnly; SameSite=Lax'
+	 */
+	_sessionCookieAttributes(pExpire)
+	{
+		let tmpAttributes = `; Path=${this.cookiePath}`;
+
+		if (pExpire)
+		{
+			tmpAttributes += '; Expires=Thu, 01 Jan 1970 00:00:00 GMT';
+		}
+		if (this.cookieHttpOnly)
+		{
+			tmpAttributes += '; HttpOnly';
+		}
+		if (this.cookieSecure)
+		{
+			tmpAttributes += '; Secure';
+		}
+		if (this.cookieSameSite)
+		{
+			tmpAttributes += `; SameSite=${this.cookieSameSite}`;
+		}
+
+		return tmpAttributes;
+	}
+
+	/**
 	 * Set the session cookie on the response.
 	 *
 	 * @param {object} pResponse - The HTTP response object
@@ -314,16 +508,7 @@ class OratorAuthentication extends libFableServiceProviderBase
 	 */
 	_setSessionCookie(pResponse, pSessionID)
 	{
-		let tmpCookie = `${this.cookieName}=${pSessionID}; Path=${this.cookiePath}`;
-
-		if (this.cookieHttpOnly)
-		{
-			tmpCookie += '; HttpOnly';
-		}
-		if (this.cookieSecure)
-		{
-			tmpCookie += '; Secure';
-		}
+		let tmpCookie = `${this.cookieName}=${pSessionID}${this._sessionCookieAttributes(false)}`;
 
 		if (typeof pResponse.setHeader === 'function')
 		{
@@ -342,16 +527,7 @@ class OratorAuthentication extends libFableServiceProviderBase
 	 */
 	_clearSessionCookie(pResponse)
 	{
-		let tmpCookie = `${this.cookieName}=; Path=${this.cookiePath}; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-
-		if (this.cookieHttpOnly)
-		{
-			tmpCookie += '; HttpOnly';
-		}
-		if (this.cookieSecure)
-		{
-			tmpCookie += '; Secure';
-		}
+		let tmpCookie = `${this.cookieName}=${this._sessionCookieAttributes(true)}`;
 
 		if (typeof pResponse.setHeader === 'function')
 		{
@@ -531,7 +707,184 @@ class OratorAuthentication extends libFableServiceProviderBase
 	}
 
 	/**
+	 * Read one request header as trimmed text. Returns '' when the request, its
+	 * headers object or the header is missing, or when the value cannot be
+	 * turned into a string. Never throws. Node lowercases incoming header names,
+	 * so pName is expected in lowercase.
+	 *
+	 * @param {object} pRequest - The HTTP request object
+	 * @param {string} pName - Lowercase header name (e.g. 'sec-fetch-site')
+	 * @returns {string} The trimmed header value, or ''
+	 */
+	_requestHeaderText(pRequest, pName)
+	{
+		try
+		{
+			if (!pRequest || !pRequest.headers || (typeof pRequest.headers !== 'object'))
+			{
+				return '';
+			}
+			let tmpValue = pRequest.headers[pName];
+			if ((tmpValue === undefined) || (tmpValue === null))
+			{
+				return '';
+			}
+			return String(tmpValue).trim();
+		}
+		catch (pError)
+		{
+			return '';
+		}
+	}
+
+	/**
+	 * Whether a Host or X-Forwarded-Host value names the same server as a
+	 * parsed Origin. Pure; never throws.
+	 *
+	 *   - Host names are compared lowercase, with one trailing dot dropped on
+	 *     each side ('app.example.com.' is the same host).
+	 *   - A header with a port must match the Origin's port. A port equal to the
+	 *     Origin scheme's default (':80' for http, ':443' for https) matches an
+	 *     Origin with no port.
+	 *   - A header with no port matches on the host name alone (a reverse proxy
+	 *     may have dropped the port).
+	 *
+	 * @param {string} pHeaderText - The header value, e.g. 'app.example.com:8080'
+	 * @param {URL} pOriginURL - The parsed http(s) Origin
+	 * @returns {boolean} True when the header names the Origin's server
+	 */
+	_hostHeaderMatchesOrigin(pHeaderText, pOriginURL)
+	{
+		try
+		{
+			// hostname, or [ipv6], then an optional :port at the very end.
+			let tmpMatch = /^(.+?)(?::(\d+))?$/.exec(String(pHeaderText).trim().toLowerCase());
+			if (!tmpMatch)
+			{
+				return false;
+			}
+			let tmpHeaderHostname = tmpMatch[1].replace(/\.$/, '');
+			let tmpOriginHostname = String(pOriginURL.hostname).toLowerCase().replace(/\.$/, '');
+			if (!tmpHeaderHostname || (tmpHeaderHostname !== tmpOriginHostname))
+			{
+				return false;
+			}
+
+			if (tmpMatch[2] === undefined)
+			{
+				return true;
+			}
+
+			// URL.port is '' when the Origin uses (or spells out) its scheme's default port.
+			let tmpHeaderPort = String(parseInt(tmpMatch[2], 10));
+			let tmpDefaultPort = (pOriginURL.protocol === 'https:') ? '443' : '80';
+			if (tmpHeaderPort === tmpDefaultPort)
+			{
+				tmpHeaderPort = '';
+			}
+			return (tmpHeaderPort === String(pOriginURL.port));
+		}
+		catch (pError)
+		{
+			return false;
+		}
+	}
+
+	/**
+	 * Decide whether the browser marked a request as coming from another site.
+	 * Pure (no logging, no instance state) so it can be unit tested.
+	 *
+	 *   - Sec-Fetch-Site, when present, decides alone: 'cross-site' (any case)
+	 *     is cross-site; 'same-origin', 'same-site' and 'none' are not.
+	 *   - Without it, a request with no Origin is not cross-site (the CLI, curl,
+	 *     server-to-server calls, and browsers that send neither header on a
+	 *     same-origin GET).
+	 *   - Otherwise the Origin must be an absolute http(s) URL whose host
+	 *     matches the Host header or the first X-Forwarded-Host value (see
+	 *     _hostHeaderMatchesOrigin): the host names must be equal, and when the
+	 *     header carries a port, the ports too. A default port on the header
+	 *     (':80' for http, ':443' for https) equals an Origin with no port.
+	 *     'null', anything unparseable, or no match is cross-site.
+	 *
+	 * A header with no port matches on the host name alone because reverse
+	 * proxies often drop the port (nginx's `proxy_set_header Host $host`), and
+	 * a page on another port of the same host is same-site anyway, which the
+	 * Sec-Fetch-Site rule already allows.
+	 *
+	 * Never throws: if a header cannot be read, the request is cross-site only
+	 * when it carried an Origin.
+	 *
+	 * @param {object} pRequest - The HTTP request object
+	 * @returns {boolean} True when the request is cross-site
+	 */
+	_isCrossSiteRequest(pRequest)
+	{
+		// An Origin header counts as present unless it is missing, null or ''.
+		let tmpHasOrigin = false;
+		try
+		{
+			let tmpRawOrigin = (pRequest && pRequest.headers && (typeof pRequest.headers === 'object')) ? pRequest.headers.origin : undefined;
+			tmpHasOrigin = (tmpRawOrigin !== undefined) && (tmpRawOrigin !== null) && (tmpRawOrigin !== '');
+		}
+		catch (pError)
+		{
+			tmpHasOrigin = false;
+		}
+
+		try
+		{
+			let tmpFetchSite = this._requestHeaderText(pRequest, 'sec-fetch-site').toLowerCase();
+			if (tmpFetchSite)
+			{
+				return (tmpFetchSite === 'cross-site');
+			}
+
+			if (!tmpHasOrigin)
+			{
+				return false;
+			}
+
+			let tmpOriginURL;
+			try
+			{
+				tmpOriginURL = new URL(this._requestHeaderText(pRequest, 'origin'));
+			}
+			catch (pParseError)
+			{
+				return true;
+			}
+			if (((tmpOriginURL.protocol !== 'http:') && (tmpOriginURL.protocol !== 'https:')) || !tmpOriginURL.host)
+			{
+				return true;
+			}
+
+			let tmpCandidates =
+			[
+				this._requestHeaderText(pRequest, 'host'),
+				this._requestHeaderText(pRequest, 'x-forwarded-host').split(',')[0]
+			];
+			for (let i = 0; i < tmpCandidates.length; i++)
+			{
+				if (this._hostHeaderMatchesOrigin(tmpCandidates[i], tmpOriginURL))
+				{
+					return false;
+				}
+			}
+
+			return true;
+		}
+		catch (pError)
+		{
+			return tmpHasOrigin;
+		}
+	}
+
+	/**
 	 * Internal: perform deauthentication logic shared by GET and POST routes.
+	 *
+	 * A request the browser marks as cross-site (see _isCrossSiteRequest) is
+	 * refused with a 403 unless allowCrossSiteDeauthenticate is set: no session
+	 * is destroyed and no clearing cookie is sent.
 	 *
 	 * @param {object} pRequest - The HTTP request object
 	 * @param {object} pResponse - The HTTP response object
@@ -539,6 +892,22 @@ class OratorAuthentication extends libFableServiceProviderBase
 	 */
 	_handleDeauthentication(pRequest, pResponse, fNext)
 	{
+		// SameSite=Lax keeps the session cookie off a cross-site POST, but a
+		// cross-site top-level GET (a link or redirect) still carries it, and the
+		// clearing cookie below needs no incoming cookie at all. Without this
+		// check any site could sign users out.
+		if (!this.allowCrossSiteDeauthenticate && this._isCrossSiteRequest(pRequest))
+		{
+			let tmpSignal = this._requestHeaderText(pRequest, 'sec-fetch-site') ? 'Sec-Fetch-Site' : 'Origin';
+			this.log.info(`OratorAuthentication: refused a cross-site Deauthenticate request (decided by ${tmpSignal}).`);
+			// Status via statusCode rather than send(403, body): restify's send()
+			// picks it up, and service servers whose send() takes only a body
+			// (the IPC server) still receive the body.
+			pResponse.statusCode = 403;
+			pResponse.send({ LoggedIn: !!this.getSessionForRequest(pRequest), Error: 'Cross-site sign-out refused.' });
+			return fNext();
+		}
+
 		let tmpSession = this.getSessionForRequest(pRequest);
 
 		if (tmpSession)

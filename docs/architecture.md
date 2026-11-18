@@ -67,3 +67,5 @@ The session store is an in-memory `Map` keyed by session ID:
 6. **Denied Passwords** - Configurable block list checked before the authenticator is invoked
 7. **No Token Leakage** - `CheckSession` never exposes OAuth tokens to the client
 8. **Secure Cookies** - Optional `CookieSecure` flag for HTTPS-only deployments
+9. **SameSite Cookies** - `SameSite=Lax` by default, so a cross-site form POST does not carry the session; it does not cover state-changing `GET` routes or login CSRF (see [Configuration: SameSite](configuration.md#samesite))
+10. **Cross-Site Sign-Out Refused** - `Deauthenticate` answers `403` to a request the browser marks as cross-site, without destroying the session or clearing the cookie, so a page on another site cannot sign users out through `Deauthenticate`. It does not cover login CSRF (signing the browser in to another account replaces the session cookie), links opened from outside the browser, or cross-site `GET`s from very old browsers and to plain-HTTP sites (see [Configuration: Cross-site sign-out](configuration.md#cross-site-sign-out))

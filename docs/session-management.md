@@ -2,7 +2,7 @@
 
 ## How Sessions Work
 
-When a user authenticates (via username/password or OAuth), the module creates a server-side session object and stores it in an in-memory `Map`. The session ID is sent to the client as an `HttpOnly` cookie. On subsequent requests, the cookie is parsed and the session is looked up.
+When a user authenticates (via username/password or OAuth), the module creates a server-side session object and stores it in an in-memory `Map`. The session ID is sent to the client as an `HttpOnly`, `SameSite=Lax` cookie. On subsequent requests, the cookie is parsed and the session is looked up.
 
 ### Session Object Structure
 
@@ -57,6 +57,7 @@ The TTL is checked against `CreatedAt`, not `LastAccess`. This means a session w
 | `CookiePath` | `'/'` | Path scope for the cookie |
 | `CookieHttpOnly` | `true` | Prevent JavaScript access to the cookie |
 | `CookieSecure` | `false` | Only send cookie over HTTPS |
+| `CookieSameSite` | `'Lax'` | SameSite attribute: `'Lax'`, `'Strict'`, `'None'` (needs `CookieSecure: true`), or `false` to leave it off |
 
 ```javascript
 tmpFable.serviceManager.instantiateServiceProvider('OratorAuthentication',
@@ -64,9 +65,24 @@ tmpFable.serviceManager.instantiateServiceProvider('OratorAuthentication',
 		CookieName: 'AppSession',
 		CookiePath: '/api/',
 		CookieHttpOnly: true,
-		CookieSecure: true  // Enable for production HTTPS deployments
+		CookieSecure: true,  // Enable for production HTTPS deployments
+		CookieSameSite: 'Lax' // The default; shown for clarity
 	});
 ```
+
+With the defaults, a sign-in sets:
+
+```
+SessionID=f47ac10b-58cc-4372-a567-0e02b2c3d479; Path=/; HttpOnly; SameSite=Lax
+```
+
+and `Deauthenticate` clears it with the same attributes:
+
+```
+SessionID=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax
+```
+
+`SameSite=Lax` keeps a cross-site form POST from carrying the session in any browser. It does not protect state-changing `GET` routes, and it does not prevent login CSRF. On its own it would not stop another site from signing the user out through `/1.0/Deauthenticate` either (a cross-site `GET` carries the cookie, and the clearing cookie needs no incoming cookie), so `Deauthenticate` refuses a request the browser marks as cross-site with a `403`, without destroying the session or clearing the cookie. That check covers `Deauthenticate` only: another site can still replace the session cookie through login CSRF, which also signs the user out of their own account. See [Configuration: SameSite](configuration.md#samesite) for what each value does and [Configuration: Cross-site sign-out](configuration.md#cross-site-sign-out) for how a request is judged and how to turn the check off.
 
 ## Accessing Sessions Programmatically
 

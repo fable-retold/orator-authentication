@@ -123,6 +123,7 @@ suite
 						Expect(tmpAuth.cookiePath).to.equal('/');
 						Expect(tmpAuth.cookieHttpOnly).to.equal(true);
 						Expect(tmpAuth.cookieSecure).to.equal(false);
+						Expect(tmpAuth.cookieSameSite).to.equal('Lax');
 						Expect(tmpAuth.deniedPasswords).to.deep.equal([]);
 
 						return fDone();
@@ -957,6 +958,7 @@ suite
 						Expect(tmpCapturedHeader.value).to.include('SessionID=test-session-id');
 						Expect(tmpCapturedHeader.value).to.include('Path=/');
 						Expect(tmpCapturedHeader.value).to.include('HttpOnly');
+						Expect(tmpCapturedHeader.value).to.include('SameSite=Lax');
 						Expect(tmpCapturedHeader.value).to.not.include('Secure');
 
 						return fDone();
@@ -990,6 +992,7 @@ suite
 						Expect(tmpCapturedHeader.name).to.equal('Set-Cookie');
 						Expect(tmpCapturedHeader.value).to.include('SessionID=;');
 						Expect(tmpCapturedHeader.value).to.include('Expires=Thu, 01 Jan 1970');
+						Expect(tmpCapturedHeader.value).to.include('SameSite=Lax');
 
 						return fDone();
 					}

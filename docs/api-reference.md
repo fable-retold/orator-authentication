@@ -49,6 +49,8 @@ After instantiation, access it as `tmpFable.OratorAuthentication`.
 | `cookiePath` | string | Cookie path scope (default: `'/'`) |
 | `cookieHttpOnly` | boolean | HttpOnly cookie flag (default: `true`) |
 | `cookieSecure` | boolean | Secure cookie flag (default: `false`) |
+| `cookieSameSite` | string \| false | SameSite attribute after normalization: `'Lax'` (default), `'Strict'`, `'None'`, or `false` (attribute omitted) |
+| `allowCrossSiteDeauthenticate` | boolean | Let `Deauthenticate` sign out on a cross-site request (default: `false`, refused with a `403`) |
 | `deniedPasswords` | array | Passwords to reject immediately |
 | `oauthStateTTL` | number | OAuth state TTL in ms (default: `300000`) |
 | `oauthPostLoginRedirectURL` | string | Post-OAuth-login redirect (default: `'/'`) |
@@ -72,8 +74,8 @@ After instantiation, access it as `tmpFable.OratorAuthentication`.
 | GET | `{prefix}Authenticate/:username/:password` | Authenticate via URL params |
 | POST | `{prefix}Authenticate` | Authenticate via JSON body (`{ UserName, Password }`) |
 | GET | `{prefix}CheckSession` | Return session if valid cookie present |
-| GET | `{prefix}Deauthenticate` | Destroy session, clear cookie |
-| POST | `{prefix}Deauthenticate` | Destroy session, clear cookie |
+| GET | `{prefix}Deauthenticate` | Destroy session, clear cookie (`403` for a cross-site request) |
+| POST | `{prefix}Deauthenticate` | Destroy session, clear cookie (`403` for a cross-site request) |
 
 ### By `connectOAuthRoutes()` (when providers configured)
 
@@ -142,6 +144,17 @@ After instantiation, access it as `tmpFable.OratorAuthentication`.
 }
 ```
 
+### Deauthenticate (Cross-Site, Refused)
+
+Sent with status `403` when the browser marks the request as cross-site and `AllowCrossSiteDeauthenticate` is off. No session is destroyed and no cookie is sent. `LoggedIn` says whether the request carried a valid session. See [Configuration: Cross-site sign-out](configuration.md#cross-site-sign-out).
+
+```json
+{
+	"LoggedIn": true,
+	"Error": "Cross-site sign-out refused."
+}
+```
+
 ### OAuth Providers List
 
 ```json
@@ -175,7 +188,8 @@ These methods are used internally and are not intended for direct use, but are d
 | `_setSessionCookie(response, sessionID)` | Set the session cookie on a response |
 | `_clearSessionCookie(response)` | Clear the session cookie (expire it) |
 | `_handleAuthentication(username, password, response, next)` | Core auth logic (shared by GET/POST) |
-| `_handleDeauthentication(request, response, next)` | Core logout logic |
+| `_handleDeauthentication(request, response, next)` | Core logout logic (refuses cross-site requests) |
+| `_isCrossSiteRequest(request)` | Whether the browser marked the request as cross-site (`Sec-Fetch-Site`, else `Origin` against `Host` / `X-Forwarded-Host`) |
 | `_getOAuthProvider(name)` | Lazy-init and cache a provider instance |
 | `_storeOAuthState(state, data)` | Store OAuth state for callback validation |
 | `_consumeOAuthState(state)` | Retrieve and delete state (one-time use) |

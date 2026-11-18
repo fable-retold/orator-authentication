@@ -28,8 +28,8 @@ None.
 | GET | `{prefix}Authenticate/:username/:password` | Authenticate via URL params |
 | POST | `{prefix}Authenticate` | Authenticate via JSON body |
 | GET | `{prefix}CheckSession` | Verify session from cookie |
-| GET | `{prefix}Deauthenticate` | Destroy session, clear cookie |
-| POST | `{prefix}Deauthenticate` | Destroy session, clear cookie |
+| GET | `{prefix}Deauthenticate` | Destroy session, clear cookie (`403` for a cross-site request; see [Cross-site sign-out](configuration.md#cross-site-sign-out)) |
+| POST | `{prefix}Deauthenticate` | Destroy session, clear cookie (`403` for a cross-site request) |
 
 ### Registered When OAuth Providers Are Configured
 

@@ -8,7 +8,7 @@ For customers requiring federated identity, optional OAuth 2.0 / OpenID Connect 
 
 ## Features
 
-- **Cookie-Based Sessions** - Server-side session store with HttpOnly cookies and configurable TTL
+- **Cookie-Based Sessions** - Server-side session store with HttpOnly, SameSite=Lax cookies and configurable TTL
 - **Pluggable Authenticator** - Replace the credential verification function without touching routes
 - **Zero-Config Defaults** - Works out of the box with sensible defaults for development
 - **OAuth 2.0 / OIDC** - Optional federated login via OpenID Connect (Google, Okta, Azure AD, Auth0, etc.)
@@ -55,7 +55,7 @@ This registers three route families on your server:
 | `/1.0/Authenticate/:username/:password` | GET | Authenticate via URL params |
 | `/1.0/Authenticate` | POST | Authenticate via JSON body |
 | `/1.0/CheckSession` | GET | Verify session from cookie |
-| `/1.0/Deauthenticate` | GET, POST | Destroy the current session |
+| `/1.0/Deauthenticate` | GET, POST | Destroy the current session (refused with a 403 for a cross-site request) |
 
 ## Installation
 

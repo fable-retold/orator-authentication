@@ -8,7 +8,7 @@ Orator Authentication is a Fable service provider that adds cookie-based session
 
 ## Features
 
-- **Cookie-Based Sessions** - Server-side session store with HttpOnly cookies and configurable TTL
+- **Cookie-Based Sessions** - Server-side session store with HttpOnly, SameSite=Lax cookies and configurable TTL
 - **Pluggable Authenticator** - Replace credential verification without touching routes
 - **Zero-Config Defaults** - Works out of the box for development with sensible defaults
 - **OAuth 2.0 / OIDC** - Optional federated login via OpenID Connect (Google, Okta, Azure AD, Auth0)
@@ -126,6 +126,8 @@ Then direct users to `/1.0/OAuth/Begin/google` to start the login flow.
 | `CookieName` | `'SessionID'` | Name of the session cookie |
 | `CookieHttpOnly` | `true` | HttpOnly flag on cookie |
 | `CookieSecure` | `false` | Secure flag on cookie (HTTPS only) |
+| `CookieSameSite` | `'Lax'` | SameSite attribute: `'Lax'`, `'Strict'`, `'None'` (needs `CookieSecure`), or `false` to omit |
+| `AllowCrossSiteDeauthenticate` | `false` | Let `Deauthenticate` sign the user out on a request the browser marks as cross-site (otherwise refused with a 403). Only `true`, `'true'` or `'1'` turn it on |
 | `DeniedPasswords` | `[]` | Passwords to reject before authenticator runs |
 | `OAuthPostLoginRedirectURL` | `'/'` | Where to redirect after OAuth login |
 
